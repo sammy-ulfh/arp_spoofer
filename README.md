@@ -56,6 +56,11 @@ Usually, a PC is not ready to redirect all the traffic, so you need to change so
         iptables -t nat -A POSTROUTING -o [INTERFACE] -j MASQUERADE
         iptables -A FORWARD -i [INTERFACE] -j ACCEPT
         ```
+- Finally, enable IP forwardding by setting **/proc/sys/net/ipv4/ip_forward** to 1, so the traffic can be routed through your machine:
+    
+    ```shell
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    ```
 
 ## How do I use it?
 
